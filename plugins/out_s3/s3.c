@@ -1950,6 +1950,9 @@ static void s3_upload_queue(struct flb_config *config, void *out_context)
                 flb_plg_warn(ctx->ins, "Chunk file failed to send %d times, will not "
                              "retry", upload_contents->retry_counter);
                 s3_store_file_inactive(ctx, upload_contents->upload_file);
+                if (upload_contents->m_upload_file) {
+                    mk_list_del(&upload_contents->m_upload_file->_head);
+                }
                 multipart_upload_destroy(upload_contents->m_upload_file);
                 remove_from_queue(upload_contents);
                 continue;
