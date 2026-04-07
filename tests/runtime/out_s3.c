@@ -228,6 +228,7 @@ void flb_test_s3_upload_part_error(void)
     int out_ffd;
     char *call_count_str;
     int call_count;
+    int upload_part_count_before;
     char store_dir[] = "/tmp/flb-s3-test-XXXXXX";
 
     TEST_CHECK(mkdtemp(store_dir) != NULL);
@@ -268,10 +269,37 @@ void flb_test_s3_upload_part_error(void)
     TEST_CHECK_(call_count == 0,
                 "Expected 0 CompleteMultipartUpload calls, got %d", call_count);
 
+    /*
+     * Phase 2: The first chunk has exceeded retry_limit and will not be retried.
+     * Clear the upload error and push a completely new chunk (not a retry of the
+     * old one) to verify the plugin can still process new data.
+     */
+    call_count_str = getenv("TEST_UploadPart_CALL_COUNT");
+    upload_part_count_before = call_count_str ? atoi(call_count_str) : 0;
+
+    unsetenv("TEST_UPLOAD_PART_ERROR");
+
+    flb_lib_push(ctx, in_ffd, (char *) JSON_TD , (int) sizeof(JSON_TD) - 1);
+
+    sleep(10);
+
+    /* New data should trigger fresh UploadPart calls */
+    call_count_str = getenv("TEST_UploadPart_CALL_COUNT");
+    call_count = call_count_str ? atoi(call_count_str) : 0;
+    TEST_CHECK_(call_count > upload_part_count_before,
+                "Expected new UploadPart calls after discard, "
+                "before=%d after=%d", upload_part_count_before, call_count);
+
+    /* New upload should complete successfully */
+    call_count_str = getenv("TEST_CompleteMultipartUpload_CALL_COUNT");
+    call_count = call_count_str ? atoi(call_count_str) : 0;
+    TEST_CHECK_(call_count >= 1,
+                "Expected >= 1 CompleteMultipartUpload calls for new data, got %d",
+                call_count);
+
     flb_stop(ctx);
     flb_destroy(ctx);
     unsetenv("FLB_S3_PLUGIN_UNDER_TEST");
-    unsetenv("TEST_UPLOAD_PART_ERROR");
     unsetenv("TEST_CreateMultipartUpload_CALL_COUNT");
     unsetenv("TEST_UploadPart_CALL_COUNT");
     unsetenv("TEST_CompleteMultipartUpload_CALL_COUNT");
